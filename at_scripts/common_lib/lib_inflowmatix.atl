@@ -1,0 +1,53 @@
+/*
+ * Inflowmatix library functions for use in u-blox m-center scripts.
+ * 
+ * Simon Moore
+ * 2024-05-09
+ * Copyright (c) 2024 Inflowmatix. All rights reserved.
+ */
+
+/* 
+ * Timeouts for AT commands, in milliseconds.
+ */
+int timeout_default    = 1000;
+int timeout_r412m_cfun = 1000 * 180;
+int timeout_r412m_cops = 1000 * 180;
+int timeout_r412m_crsm = 1000 * 10;
+
+/* 
+ * Verify the AT interface is connected.
+ * 
+ * Sends the "AT" command and waits for "OK" response; retries up to 10 times.
+ */
+bool verify_at_connectivity()
+{
+    ECHO("AT interface: attempting to connect");
+    for(int i = 0; i < 10; i++) 
+    {
+        PAUSE(50);
+        string response = SENDAT("AT", timeout_default, "OK");
+        if(response == "OK") 
+        {
+            ECHO("AT interface: connected");
+            return true;
+        }
+    }
+    ECHO("AT interface: failed to connect!");
+    return false;
+}
+
+/*
+ * Send an AT command and capture the response.
+ *
+ * Pauses for 50 milliseconds to ensure a minimal gap between commands.
+ * Sends the AT command.
+ * Captures the reponse; this is the intermediate result code if available, else
+ * the final result code e.g. "OK".
+ * Waits until an expected response is received or a timeout occurs.
+ */
+string send_at_command(string command, int timeout_ms, string expected_response)
+{
+    PAUSE(50);
+    string response = SENDAT(command, timeout_ms, expected_response);
+    return response;
+}
