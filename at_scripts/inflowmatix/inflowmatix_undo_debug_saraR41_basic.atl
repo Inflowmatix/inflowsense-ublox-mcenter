@@ -1,0 +1,25 @@
+/*
+ * Inflowmatix script for u-blox m-center to undo the various URCs that the
+ * debug_saraR41_basic.atl script enables.
+ *
+ * Simon Moore
+ * 2024-05-16
+ * Copyright (c) 2024 Inflowmatix. All rights reserved.
+ */
+
+ECHO("==== inflowmatix_undo_debug_saraR41_basic.atl ====");
+
+/* Disabe the Bearer Independent Protocol status indication. */
+send_at_command("AT+UBIP=0", timeout_default, "OK");
+
+/* Disables the signaling connection status URC. */
+send_at_command("AT+CSCON=0", timeout_default, "OK");
+
+/* Disable the packet switched event reporting. */
+send_at_command("AT+CGEREP=0,0", timeout_default, "OK");
+
+/* Disable the Power Saving Mode indication. */
+send_at_command("AT+UPSMR=0", timeout_default, "OK");
+
+/* Disable the LwM2M URCs. */
+send_at_command("AT+ULWM2MSTAT=0", timeout_default, "OK");
