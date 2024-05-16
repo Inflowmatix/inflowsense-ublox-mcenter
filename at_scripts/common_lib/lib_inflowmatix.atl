@@ -181,7 +181,7 @@ bool is_registered_cereg_query(string response)
         ECHO("EPS registered: home network");
         return true;
     }
-    if(response.findFirst("+CEREG: 1,5") == 0)
+    if(response.findFirst("+CEREG: 4,5") == 0)
     {
         ECHO("EPS registered: roaming");
         return true;        
