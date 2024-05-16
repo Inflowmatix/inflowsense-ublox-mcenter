@@ -144,7 +144,7 @@ if(ccid_response.findFirst("+CCID: 894450") == 0)
 }
 if(ccid_response.findFirst("+CCID: 894620") == 0)
 {
-    sim_type = 3;
+    sim_type = 2;
     ECHO("SIM type: ARM Pelion Tele2");
 }
 if(ccid_response.findFirst("+CCID: 893407") == 0)
