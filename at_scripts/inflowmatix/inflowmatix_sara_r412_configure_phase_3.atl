@@ -21,6 +21,8 @@
  * Copyright (c) 2024 Inflowmatix. All rights reserved.
  */
 
+ECHO("==== inflowmatix_sara_r412_configure_phase_3.atl ====");
+
 /* Paranoia, the m-center AT terminal log should have been enabled earlier. */
 MC_TERMINAL_LOG(true);
 
