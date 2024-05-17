@@ -1,0 +1,13 @@
+/*
+ * Inflowmatix script for u-blox m-center to query additional settings for debug
+ * purposes.
+ *
+ * Simon Moore
+ * 2024-05-17
+ * Copyright (c) 2024 Inflowmatix. All rights reserved.
+ */
+
+ECHO("==== inflowmatix_sara_r412_debug_additional.atl ====");
+
+/* Get the test mode. */
+send_at_command("AT+UTEST?", timeout_default, "OK");

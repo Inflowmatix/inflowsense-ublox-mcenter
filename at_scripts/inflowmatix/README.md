@@ -27,8 +27,10 @@ Test process:
     - Some URCs will be periodically reported
 9. Run the m-center script [inflowmatix_undo_debug_saraR41_basic.atl](inflowmatix_undo_debug_saraR41_basic.atl)
     - This disables some URCs that were enabled by the m-center script [debug_saraR41_basic.atl](../debug-ability/debug_saraR41_basic.atl)
-10. Power off the modem
+10. Run the m-center script [inflowmatix_sara_r412_debug_additional.atl](inflowmatix_sara_r412_debug_additional.atl)
+    - This runs some additional checks not included in the m-center script [debug_saraR41_basic.atl](../debug-ability/debug_saraR41_basic.atl)
+11. Power off the modem
     - Send the `AT+CPWROFF` command
-11. Stop the m-center trace
+12. Stop the m-center trace
     - This was started in the m-center script [inflowmatix_sara_r412_network_registration.atl](inflowmatix_sara_r412_network_registration.atl)
-12. Locate and save both the m-center AT log file and the trace file
+13. Locate and save both the m-center AT log file and the trace file
