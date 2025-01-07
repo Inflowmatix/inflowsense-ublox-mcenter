@@ -36,7 +36,6 @@ MC_TERMINAL_LOG(true);
 // bool trace_at_commands = true;
 // int trace_protocol_sara_r4 = 10;
 // MC_TRACE_START(trace_file, trace_at_commands, trace_protocol_sara_r4);
-//
 
 /* Start. */
 ECHO("Network registration: started");
@@ -56,6 +55,13 @@ if(!at_connected)
 
 /* Enable error reporting using numeric error codes. */
 send_at_command("AT+CMEE=1", timeout_default, "OK");
+
+/*
+ * Deregister from the network.
+ *
+ * Avoid registering before running the remainder of this script.
+ */
+send_at_command("AT+COPS=2", timeout_r412m_cops, "OK");
 
 /*
  * Confirm the RAT selection.
@@ -265,21 +271,6 @@ send_at_command("AT+UCUSATA=4", timeout_default, "OK");
 /* Set the operator selection reporting format to numeric. */
 send_at_command("AT+COPS=3,2", timeout_r412m_cops, "OK");
 
-/* 
- * Confirm the operator selection mode. 
- *
- * This should be set to 0 i.e. automatic; if not then set it.
- */
-string cops_response = send_at_command("AT+COPS?", timeout_r412m_cops, "OK");
-if(cops_response.findFirst("+COPS: 0") != 0)
-{
-    ECHO("Changing to automatic network selection");
-    send_at_command("AT+COPS=0,2", timeout_r412m_cops, "OK");
-}
-
-/* Get the IMSI. */
-send_at_command("AT+CIMI", timeout_default, "OK");
-
 /*
  * Detect the antenna.
  *
@@ -312,66 +303,15 @@ bool eps_registered = is_registered_cereg_query(cereg_response);
 bool registered     = cs_registered || ps_registered || eps_registered;
 
 /* 
- * Wait for network registration. 
- *
- * Waits for up to 700 seconds to allow enough time for the Twilio IMSI 
- * switching process to be exhausted.
- *
- * Differs slightly from the InflowSense 1P firmware in a few respects:
- *  1. InflowSense 1P firmware will stop earlier once it has observed all
-       possible IMSIs failing to register.
- *  2. InflowSense 1P firmware attempts to disable uFOTA whilst waiting for
- *     network registration, but that is impractical to do here.
- *  3. InflowSense 1P firmware loads TLS certificates and configures TLS
- *     settings whilst waiting for network registration, but that is impractical
- *     to do here.
- *
- * Hopefully these differences are not significant?
+ * Start manual network registration. 
  */
-int time_now       = get_time_seconds();
-int time_end       = time_now + 700;
-int time_remaining = time_end - time_now;
+string cops_response = send_at_command('AT+COPS=1,2,"23415"', timeout_r412m_cops, "OK");
 
-if(!registered)
-{
-    ECHO("Waiting " + time_remaining + " seconds for network registration");
-}
+/* Identify the network operator. */
+send_at_command("AT+COPS?", timeout_r412m_cops, "OK");
 
-while(!registered && (time_remaining > 0))
-{
-    /* Wait for +CREG, +CGREG, +CEREG and +UUSIMSTAT URCs. */
-    string wait_response = WAIT("+", time_remaining * 1000, false);
-
-    /* Has registration succeeded? */
-    cs_registered  = is_registered_creg_urc(wait_response);
-    ps_registered  = is_registered_cgreg_urc(wait_response);
-    eps_registered = is_registered_cereg_urc(wait_response);
-    registered     = cs_registered || ps_registered || eps_registered;
-
-    /* Has a Twilio IMSI switch just occurred? */
-    if(wait_response.findFirst("+UUSIMSTAT: 9") == 0)
-    {
-        /* Get the new IMSI. */
-        string cimi_response = send_at_command("AT+CIMI", timeout_default, "OK");
-        ECHO("IMSI switch: " + cimi_response);
-    }
-
-    /* Update the current time. */
-    time_now = get_time_seconds();
-    time_remaining = time_end - time_now;
-}
-
-/* Complete. */
-if(registered) {
-    /* Identify the network operator. */
-    send_at_command("AT+COPS?", timeout_r412m_cops, "OK");
-
-    ECHO("Network registration: success!");
-}
-else
-{
-    ECHO("Network registration: timeout!");
-}
+/* Get the IMSI. */
+send_at_command("AT+CIMI", timeout_default, "OK");
 
 /* Leave the trace running in case further scripts need to be run. */
 // UI_INPUT("Trace has been left running; remember to stop it when appropriate!");

@@ -4,7 +4,7 @@
  *
  * Configuration phases:
  *  1. Reset MNO profile to start from a clean slate.
- *  2. Set the desired MNO profile.
+ *  2. Set the desired MNO profile. <=== THIS SCRIPT
  *  3. Adjust MNO profile settings.
  *
  * The AT sequences are a reasonable facsimile of the InflowSense 1P firmware
@@ -66,10 +66,9 @@ send_at_command("AT+COPS=2", timeout_r412m_cops, "OK");
 /*
  * Set the MNO profile to the desired profile.
  *
- * The desired MNO profile is currently 2 i.e. AT&T.
- * This should ideally be profile 100 i.e. Standard Europe.
+ * The desired MNO profile is profile 100 i.e. Standard Europe.
  */
-send_at_command("AT+UMNOPROF=2", timeout_default, "OK");
+send_at_command("AT+UMNOPROF=100", timeout_default, "OK");
 
 /* Reboot to apply the MNO profile setting. */
 send_at_command("AT+CFUN=15", timeout_default, "OK");

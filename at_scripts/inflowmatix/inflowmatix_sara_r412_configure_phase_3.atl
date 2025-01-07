@@ -5,7 +5,7 @@
  * Configuration phases:
  *  1. Reset MNO profile to start from a clean slate.
  *  2. Set the desired MNO profile.
- *  3. Adjust MNO profile settings.
+ *  3. Adjust MNO profile settings. <=== THIS SCRIPT
  *
  * The AT sequences are a reasonable facsimile of the InflowSense 1P firmware
  * as of version v5.3.8. 
@@ -48,24 +48,21 @@ send_at_command("AT+CMEE=1", timeout_default, "OK");
 /* 
  * Confirm the MNO profile.
  *
- * This should currently be 2 i.e. AT&T.
+ * This should currently be 100 i.e. Standard Europe.
  */
 string mno_response = send_at_command("AT+UMNOPROF?", timeout_default, "OK");
-if(mno_response.findFirst("+UMNOPROF: 2") != 0)
+if(mno_response.findFirst("+UMNOPROF: 100") != 0)
 {
     STOP("ERROR! Unexpected MNO profile: " + mno_response);  
 }
 
 /*
- * Confirm the RAT selection.
+ * Get the current RAT selection.
  *
- * This should be 7,9 i.e. LTE-M as 1st preference, 2G as 2nd preference.
+ * This should be 7,8,9 i.e. LTE-M as 1st preference, NB-IoT as 2nd preference
+ * and 2G as 3rd preference.
  */
 string urat_response = send_at_command("AT+URAT?", timeout_r412m_urat, "OK");
-if(urat_response.findFirst("+URAT: 7,9") != 0)
-{
-    STOP("ERROR! Unexpected RAT selection: " + urat_response);  
-}
 
 /*
  * Get the current bandmask.
@@ -118,9 +115,16 @@ if(cedrxs_response.length() != 12)
 /*
  * Deregister from the network.
  *
- * This is required before attempting to set the MNO profile.
+ * This is required before attempting to set the RAT and bandmask.
  */
 send_at_command("AT+COPS=2", timeout_r412m_cops, "OK");
+
+/*
+ * Set the RAT selection.
+ *
+ * This should be 7,9 i.e. LTE-M as 1st preference, 2G as 2nd preference.
+ */
+send_at_command("AT+URAT=7,9", timeout_r412m_urat, "OK");
 
 /*
  * Set the bandmask to enable all LTE-M bands supported by the SARA-R412M.

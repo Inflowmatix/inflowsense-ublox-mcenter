@@ -3,7 +3,7 @@
  * cellular network module, phase 1.
  *
  * Configuration phases:
- *  1. Reset MNO profile to start from a clean slate.
+ *  1. Reset MNO profile to start from a clean slate. <=== THIS SCRIPT
  *  2. Set the desired MNO profile.
  *  3. Adjust MNO profile settings.
  *
