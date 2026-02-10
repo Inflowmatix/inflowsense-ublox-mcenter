@@ -1,0 +1,359 @@
+/*
+ * Inflowmatix script for u-blox m-center to register on a mobile network for a
+ * u-blox SARA-R412M-02B cellular network module.
+ *
+ * This is intendend to be run after completing the configuration phases:
+ *  1. Reset MNO profile to start from a clean slate.
+ *  2. Set the desired MNO profile.
+ *  3. Adjust MNO profile settings.
+ *
+ * The AT sequences are a reasonable facsimile of the InflowSense 1P firmware
+ * as of version v5.3.8.
+ *
+ * Simon Moore
+ * 2024-05-09
+ * Copyright (c) 2024 Inflowmatix. All rights reserved.
+ */
+
+ECHO("==== inflowmatix_sara_r412_network_registration.atl ====");
+
+/* Paranoia, the m-center AT terminal log should have been enabled earlier. */
+MC_TERMINAL_LOG(true);
+
+/* 
+ * Start a trace. 
+ *
+ * Beware that this will only work if the trace port is manually selected. Sadly
+ * this is impractical to do programatically given that each new device typically
+ * enumerates with a new COM port number.
+ *
+ * The trace protocol value for SARA-R4 is not documented, hence was determined
+ * empirically.
+ */
+UI_INPUT("Ensure the trace port has been selected");
+string trace_file = "inflowmatix_sara_r412_network_registration";
+bool trace_at_commands = true;
+int trace_protocol_sara_r4 = 10;
+MC_TRACE_START(trace_file, trace_at_commands, trace_protocol_sara_r4);
+
+/* Start. */
+ECHO("Network registration: started");
+
+/* Ensure the AT COM port is connected. */
+bool com_port_connected = MC_PORT_CONNECT();
+if(!com_port_connected) {
+    STOP("ERROR! Failed to connect AT COM port");
+}
+
+/* Verify AT connectivity. */
+bool at_connected = verify_at_connectivity();
+if(!at_connected)
+{
+    STOP("ERROR! Failed to connect AT interface");
+}
+
+/* Enable error reporting using numeric error codes. */
+send_at_command("AT+CMEE=1", timeout_default, "OK");
+
+/*
+ * Confirm the RAT selection.
+ *
+ * This should be 7,9 i.e. LTE-M as 1st preference, 2G as 2nd preference.
+ */
+string urat_response = send_at_command("AT+URAT?", timeout_r412m_urat, "OK");
+if(urat_response.findFirst("+URAT: 7,9") != 0)
+{
+    STOP("ERROR! Unexpected RAT selection: " + urat_response);  
+}
+
+/*
+ * Confirm the bandmask.
+ *
+ * This should be 0,168302750,1,2074 i.e. all LTE-M bands enabled.
+ * The NB-IoT bands can be ignored given the RAT selection.
+ *
+ * | Supported Band    | Bit | 
+ * |-------------------|-----|
+ * | Band 2 (1900 MHz) | 1   | 
+ * | Band 3 (1800 MHz) | 2   | 
+ * | Band 4 (1700 MHz) | 3   | 
+ * | Band 5 (850 MHz)  | 4   | 
+ * | Band 8 (900 MHz)  | 7   | 
+ * | Band 12 (700 MHz) | 11  | 
+ * | Band 13 (750 MHz) | 12  | 
+ * | Band 20 (800 MHz) | 19  | 
+ * | Band 26 (850 MHz) | 25  | 
+ * | Band 28 (700 MHz) | 27  |
+ */
+string ubandmask_response = send_at_command("AT+UBANDMASK?", timeout_default, "OK");
+if(ubandmask_response.findFirst("+UBANDMASK: 0,168302750") != 0)
+{
+    STOP("ERROR! Unexpected bandmask: " + ubandmask_response);  
+}
+
+/* 
+ * Confirm the power saving mode setting.
+ *
+ * This should be 0 i.e. disable the use of PSM.
+ */
+string cpsms_response = send_at_command("AT+CPSMS?", timeout_r412m_cpsms, "OK");
+if(cpsms_response.findFirst("+CPSMS:0") != 0)
+{
+    STOP("ERROR! Unexpected power saving mode: " + cpsms_response);  
+}
+
+/*
+ * Confirm the eDRX setting.
+ *
+ * This should be disabled.
+ * 
+ * Note that response when eDRX is disabled is just the following:
+ *  +CEDRXS: 
+ *  OK
+ *
+ * It is not clear if or how m-center scripts support \r and \n etc, so in the
+ * absence of that a length match is the best option.
+ */
+string cedrxs_response = send_at_command("AT+CEDRXS?", timeout_default, "OK");
+if(cedrxs_response.length() != 12)
+{
+    STOP("ERROR! Unexpected eDRX setting: " + cedrxs_response); 
+}
+
+/* 
+ * Identify the SIM type.
+ *
+ * Map the SIM type to a crude enumeration:
+ *  0 : Unknown
+ *  1 : ARM Pelion Stream (Jersey Telecom)
+ *  2 : ARM Pelion Tele2
+ *  3 : O2 M2M
+ *  4 : Twilio Super (now rebranded as KORE)
+ *
+ * Note this is not an exact match for how the InflowSense 1P firmware
+ * accomplishes this, because the firmware caches the SIM type across the reboot
+ * cycles during the configuration phases, and also uses a combination of
+ * AT+CRSM and AT+CCID. But this is a reasonable approach for m-center.
+ */
+int sim_type = 0;
+string ccid_response = send_at_command("AT+CCID", timeout_default, "OK");
+if(ccid_response.findFirst("+CCID: 894450") == 0)
+{
+    sim_type = 1;
+    ECHO("SIM type: ARM Pelion Stream (Jersey Telecom)");
+}
+if(ccid_response.findFirst("+CCID: 894620") == 0)
+{
+    sim_type = 2;
+    ECHO("SIM type: ARM Pelion Tele2");
+}
+if(ccid_response.findFirst("+CCID: 893407") == 0)
+{
+    sim_type = 3;
+    ECHO("SIM type: O2 M2M");
+}
+if(ccid_response.findFirst("+CCID: 89883") == 0)
+{
+    sim_type = 4;
+    ECHO("SIM type: Twilio Super (now rebranded as KORE)");
+}
+if(sim_type == 0)
+{
+    ECHO("SIM type: unknown");
+}
+
+/* 
+ * Set the PDP context definitions. 
+ *
+ * The APN depends upon the SIM type:
+ *  0 : Unknown                              : blank
+ *  1 : ARM Pelion Stream (Jersey Telecom)   : stream.co.uk
+ *  2 : ARM Pelion Tele2                     : stream.co.uk
+ *  3 : O2 M2M                               : iot.o2.co.uk
+ *  4 : Twilio Super (now rebranded as KORE) : super
+ */
+if(sim_type == 0)
+{
+    send_at_command('"AT+CGDCONT=1,"IPV4V6",""', timeout_default, "OK");
+}
+if(sim_type == 1)
+{
+    send_at_command('"AT+CGDCONT=1,"IPV4V6","stream.co.uk"', timeout_default, "OK");
+}
+if(sim_type == 2)
+{
+    send_at_command('AT+CGDCONT=1,"IPV4V6","stream.co.uk"', timeout_default, "OK");
+}
+if(sim_type == 3)
+{
+    send_at_command('AT+CGDCONT=1,"IPV4V6","iot.o2.co.uk"', timeout_default, "OK");
+}
+if(sim_type == 4)
+{
+    send_at_command('AT+CGDCONT=1,"IPV4V6","super"', timeout_default, "OK");
+}
+
+/* 
+ * Get the current PDP context definitions.
+ *
+ * This should be as set above, except that M0.12.00 firmware defines a
+ * secondary context for AT&T using the APN "attm2mglobal".
+ */
+send_at_command("AT+CGDCONT?", timeout_default, "OK");
+
+/*
+ * Set the authentication parameters for the PDP/EPS bearer.
+ *
+ * The credentials depend upon the SIM type:
+ *  0 : Unknown                              : no authentication
+ *  1 : ARM Pelion Stream (Jersey Telecom)   : CHAP with username and password
+ *  2 : ARM Pelion Tele2                     : CHAP with username and password
+ *  3 : O2 M2M                               : no authentication
+ *  4 : Twilio Super (now rebranded as KORE) : no authentication
+ *
+ * Beware that the password argument comes before the username argument.
+ */
+if(sim_type == 0)
+{
+    send_at_command("AT+UAUTHREQ=1,0", timeout_default, "OK");
+}
+if(sim_type == 1)
+{
+    send_at_command('AT+UAUTHREQ=1,2,"void","default"', timeout_default, "OK");
+}
+if(sim_type == 2)
+{
+    send_at_command('AT+UAUTHREQ=1,2,"streamip","streamip"', timeout_default, "OK");
+}
+if(sim_type == 3)
+{
+    send_at_command("AT+UAUTHREQ=1,0", timeout_default, "OK");
+}
+if(sim_type == 4)
+{
+    send_at_command("AT+UAUTHREQ=1,0", timeout_default, "OK");
+}
+
+/* 
+ * Enable SIM states reporting.
+ *
+ * This enables the URCs to report the (U)SIM toolkit REFRESH proactive command 
+ * execution result. This typically occurs when a Twilio Super SIM performs an
+ * IMSI switch.
+ */
+send_at_command("AT+USIMSTAT=4", timeout_default, "OK");
+send_at_command("AT+UCUSATA=4", timeout_default, "OK");
+
+/* Set the operator selection reporting format to numeric. */
+send_at_command("AT+COPS=3,2", timeout_r412m_cops, "OK");
+
+/* 
+ * Confirm the operator selection mode. 
+ *
+ * This should be set to 0 i.e. automatic; if not then set it.
+ */
+string cops_response = send_at_command("AT+COPS?", timeout_r412m_cops, "OK");
+if(cops_response.findFirst("+COPS: 0") != 0)
+{
+    ECHO("Changing to automatic network selection");
+    send_at_command("AT+COPS=0,2", timeout_r412m_cops, "OK");
+}
+
+/* Get the IMSI. */
+send_at_command("AT+CIMI", timeout_default, "OK");
+
+/*
+ * Detect the antenna.
+ *
+ * Either open circuit or resistive are acceptable; abort on short circuit.
+ */
+string uantr_response = send_at_command("AT+UANTR=0", timeout_default, "OK");
+if(uantr_response.findFirst("+UANTR: 0,0") == 0)
+{
+    STOP("ERROR! Antenna short circuit: " + uantr_response); 
+}
+
+/* Enable URCs for network registration status. */
+send_at_command("AT+CREG=2",  timeout_default, "OK");
+send_at_command("AT+CGREG=2", timeout_default, "OK");
+send_at_command("AT+CEREG=4", timeout_default, "OK");
+
+/*
+ * Get the current network registration status.
+ *
+ * It may be possible that registration has succeeded already, and if so we will
+ * not get a URC when the URCs were just enabled above.
+ */
+string creg_response  = send_at_command("AT+CREG?",  timeout_default, "OK");
+string cgreg_response = send_at_command("AT+CGREG?", timeout_default, "OK");
+string cereg_response = send_at_command("AT+CEREG?", timeout_default, "OK");
+
+bool cs_registered  = is_registered_creg_query(creg_response);
+bool ps_registered  = is_registered_cgreg_query(cgreg_response);
+bool eps_registered = is_registered_cereg_query(cereg_response);
+bool registered     = cs_registered || ps_registered || eps_registered;
+
+/* 
+ * Wait for network registration. 
+ *
+ * Waits for up to 700 seconds to allow enough time for the Twilio IMSI 
+ * switching process to be exhausted.
+ *
+ * Differs slightly from the InflowSense 1P firmware in a few respects:
+ *  1. InflowSense 1P firmware will stop earlier once it has observed all
+       possible IMSIs failing to register.
+ *  2. InflowSense 1P firmware attempts to disable uFOTA whilst waiting for
+ *     network registration, but that is impractical to do here.
+ *  3. InflowSense 1P firmware loads TLS certificates and configures TLS
+ *     settings whilst waiting for network registration, but that is impractical
+ *     to do here.
+ *
+ * Hopefully these differences are not significant?
+ */
+int time_now       = get_time_seconds();
+int time_end       = time_now + 700;
+int time_remaining = time_end - time_now;
+
+if(!registered)
+{
+    ECHO("Waiting " + time_remaining + " seconds for network registration");
+}
+
+while(!registered && (time_remaining > 0))
+{
+    /* Wait for +CREG, +CGREG, +CEREG and +UUSIMSTAT URCs. */
+    string wait_response = WAIT("+", time_remaining * 1000, false);
+
+    /* Has registration succeeded? */
+    cs_registered  = is_registered_creg_urc(wait_response);
+    ps_registered  = is_registered_cgreg_urc(wait_response);
+    eps_registered = is_registered_cereg_urc(wait_response);
+    registered     = cs_registered || ps_registered || eps_registered;
+
+    /* Has a Twilio IMSI switch just occurred? */
+    if(wait_response.findFirst("+UUSIMSTAT: 9") == 0)
+    {
+        /* Get the new IMSI. */
+        string cimi_response = send_at_command("AT+CIMI", timeout_default, "OK");
+        ECHO("IMSI switch: " + cimi_response);
+    }
+
+    /* Update the current time. */
+    time_now = get_time_seconds();
+    time_remaining = time_end - time_now;
+}
+
+/* Complete. */
+if(registered) {
+    /* Identify the network operator. */
+    send_at_command("AT+COPS?", timeout_r412m_cops, "OK");
+
+    ECHO("Network registration: success!");
+}
+else
+{
+    ECHO("Network registration: timeout!");
+}
+
+/* Leave the trace running in case further scripts need to be run. */
+UI_INPUT("Trace has been left running; remember to stop it when appropriate!");

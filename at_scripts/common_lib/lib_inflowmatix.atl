@@ -1,0 +1,211 @@
+/*
+ * Inflowmatix library functions for use in u-blox m-center scripts.
+ * 
+ * Simon Moore
+ * 2024-05-09
+ * Copyright (c) 2024 Inflowmatix. All rights reserved.
+ */
+
+/* 
+ * Timeouts for AT commands, in milliseconds.
+ */
+int timeout_default     = 1000;
+int timeout_r412m_cfun  = 1000 * 180;
+int timeout_r412m_cops  = 1000 * 180;
+int timeout_r412m_cpsms = 1000 * 10;
+int timeout_r412m_crsm  = 1000 * 10;
+int timeout_r412m_urat  = 1000 * 10;
+
+/* 
+ * Verify the AT interface is connected.
+ * 
+ * Sends the "AT" command and waits for "OK" response; retries up to 10 times.
+ */
+bool verify_at_connectivity()
+{
+    ECHO("AT interface: attempting to connect");
+    for(int i = 0; i < 10; i++) 
+    {
+        PAUSE(50);
+        string response = SENDAT("AT", timeout_default, "OK");
+        if(response == "OK") 
+        {
+            ECHO("AT interface: connected");
+            return true;
+        }
+    }
+    ECHO("AT interface: failed to connect!");
+    return false;
+}
+
+/*
+ * Send an AT command and capture the response.
+ *
+ * Pauses for 50 milliseconds to ensure a minimal gap between commands.
+ * Sends the AT command.
+ * Captures the reponse; this is the intermediate result code if available, else
+ * the final result code e.g. "OK".
+ * Waits until an expected response is received or a timeout occurs.
+ */
+string send_at_command(string command, int timeout_ms, string expected_response)
+{
+    PAUSE(50);
+    string response = SENDAT(command, timeout_ms, expected_response);
+    return response;
+}
+
+/*
+ * Get the current time in seconds.
+ *
+ * Sadly the datetime type is not comparable, hence this crude attempt.
+ * Beware that trying to compare across a midnight boundary will fail badly!
+ */
+int get_time_seconds()
+{
+    /* Get the current time (an uninitialised datetime represents now). */
+    datetime now;
+
+    /* Convert to seconds. */
+    int hours   = now.get_hour();
+    int minutes = now.get_minute();
+    int seconds = now.get_second();    
+    return (hours * 3600) + (minutes * 60) + seconds;
+}
+
+/*
+ * Get the current time as a string e.g. 20240516T140237.
+ */
+string get_time_string()
+{
+    /* Get the current time (an uninitialised datetime represents now). */
+    datetime now;
+
+    /* Format as YYYYMMDDThhmmss (the timezone is local and unknown). */
+    return formatUInt(now.get_year(),   '',  4) +
+           formatUInt(now.get_month(),  '0', 2) +
+           formatUInt(now.get_day(),    '0', 2) + 
+           "T"                                  +
+           formatUInt(now.get_hour(),   '0', 2) +
+           formatUInt(now.get_minute(), '0', 2) +
+           formatUInt(now.get_second(), '0', 2);
+}
+
+/*
+ * Parse the response from a +CREG query to determine if network registration 
+ * has succeeded.
+ */
+bool is_registered_creg_query(string response)
+{
+    if(response.findFirst("+CREG: 2,1") == 0)
+    {
+        ECHO("CS registered: home network");
+        return true;
+    }
+    if(response.findFirst("+CREG: 2,5") == 0)
+    {
+        ECHO("CS registered: roaming");
+        return true;        
+    }
+
+    return false;
+}
+
+/*
+ * Parse the response from a +CREG URC to determine if network registration has
+ * succeeded.
+ */
+bool is_registered_creg_urc(string response)
+{
+    if(response.findFirst("+CREG: 1") == 0)
+    {
+        ECHO("CS registered: home network");
+        return true;
+    }
+    if(response.findFirst("+CREG: 5") == 0)
+    {
+        ECHO("CS registered: roaming");
+        return true;        
+    }
+
+    return false;
+}
+
+/*
+ * Parse the response from a +CGREG query to determine if network registration
+ * has succeeded.
+ */
+bool is_registered_cgreg_query(string response)
+{
+    if(response.findFirst("+CGREG: 2,1") == 0)
+    {
+        ECHO("PS registered: home network");
+        return true;
+    }
+    if(response.findFirst("+CGREG: 2,5") == 0)
+    {
+        ECHO("PS registered: roaming");
+        return true;        
+    }
+
+    return false;
+}
+
+/*
+ * Parse the response from a +CGREG URC to determine if network registration
+ * has succeeded.
+ */
+bool is_registered_cgreg_urc(string response)
+{
+    if(response.findFirst("+CGREG: 1") == 0)
+    {
+        ECHO("PS registered: home network");
+        return true;
+    }
+    if(response.findFirst("+CGREG: 5") == 0)
+    {
+        ECHO("PS registered: roaming");
+        return true;        
+    }
+
+    return false;
+}
+
+/*
+ * Parse the response from a +CEREG query to determine if network registration
+ * has succeeded.
+ */
+bool is_registered_cereg_query(string response)
+{
+    if(response.findFirst("+CEREG: 4,1") == 0)
+    {
+        ECHO("EPS registered: home network");
+        return true;
+    }
+    if(response.findFirst("+CEREG: 4,5") == 0)
+    {
+        ECHO("EPS registered: roaming");
+        return true;        
+    }
+
+    return false;
+}
+
+/*
+ * Parse the response from a +CEREG URC to determine if network registration
+ * has succeeded.
+ */
+bool is_registered_cereg_urc(string response)
+{
+    if(response.findFirst("+CEREG: 1") == 0)
+    {
+        ECHO("EPS registered: home network");
+        return true;
+    }
+    if(response.findFirst("+CEREG: 5") == 0)
+    {
+        ECHO("EPS registered: roaming");
+        return true;        
+    }
+
+    return false;
+}

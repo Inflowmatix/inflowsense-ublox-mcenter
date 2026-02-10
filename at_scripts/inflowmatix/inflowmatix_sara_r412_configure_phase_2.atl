@@ -1,0 +1,78 @@
+/*
+ * Inflowmatix script for u-blox m-center to configure a u-blox SARA-R412M-02B 
+ * cellular network module, phase 2.
+ *
+ * Configuration phases:
+ *  1. Reset MNO profile to start from a clean slate.
+ *  2. Set the desired MNO profile.
+ *  3. Adjust MNO profile settings.
+ *
+ * The AT sequences are a reasonable facsimile of the InflowSense 1P firmware
+ * as of version v5.3.8. 
+ *
+ * Beware that the reboot timings and behaviour may differ because of USB and 
+ * m-center limitations: the AT COM port may or may not disconnect over a reboot
+ * cycle and if the MC_PORT_CONNECT macro does perform a reconnect then it
+ * annoyingly sends a variety of AT commands itself, thus interfering with the
+ * InflowSense 1P firmware sequence.
+ *
+ * Simon Moore
+ * 2024-05-09
+ * Copyright (c) 2024 Inflowmatix. All rights reserved.
+ */
+
+ECHO("==== inflowmatix_sara_r412_configure_phase_2.atl ====");
+
+/* The m-center AT terminal log should have been enabled earlier, but check. */
+MC_TERMINAL_LOG(true);
+
+/* Start. */
+ECHO("Configuration phase 2: started");
+
+/* Ensure the AT COM port is connected. */
+bool com_port_connected = MC_PORT_CONNECT();
+if(!com_port_connected) {
+    STOP("ERROR! Failed to connect AT COM port");
+}
+
+/* Verify AT connectivity. */
+bool at_connected = verify_at_connectivity();
+if(!at_connected)
+{
+    STOP("ERROR! Failed to connect AT interface");
+}
+
+/* Enable error reporting using numeric error codes. */
+send_at_command("AT+CMEE=1", timeout_default, "OK");
+
+/* 
+ * Confirm the MNO profile.
+ *
+ * This should currently be 0 i.e. the undefined / regulatory profile.
+ */
+string mno_response = send_at_command("AT+UMNOPROF?", timeout_default, "OK");
+if(mno_response.findFirst("+UMNOPROF: 0") != 0)
+{
+    STOP("ERROR! Unexpected MNO profile: " + mno_response);  
+}
+
+/*
+ * Deregister from the network.
+ *
+ * This is required before attempting to set the MNO profile.
+ */
+send_at_command("AT+COPS=2", timeout_r412m_cops, "OK");
+
+/*
+ * Set the MNO profile to the desired profile.
+ *
+ * The desired MNO profile is currently 2 i.e. AT&T.
+ * This should ideally be profile 100 i.e. Standard Europe.
+ */
+send_at_command("AT+UMNOPROF=2", timeout_default, "OK");
+
+/* Reboot to apply the MNO profile setting. */
+send_at_command("AT+CFUN=15", timeout_default, "OK");
+
+/* Complete. */
+ECHO("Configuration phase 2: complete, rebooting...");
